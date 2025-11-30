@@ -2,7 +2,7 @@
 // This file is imported by app.js (ES module).
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyD72726wlLWb4XTJ4BfgNThG1H_m-V6a0A",
+  apiKey: "FIREBASE_API_KEY",
   authDomain: "fir-database-f9264.firebaseapp.com",
   databaseURL: "https://fir-database-f9264-default-rtdb.firebaseio.com",
   projectId: "fir-database-f9264",
