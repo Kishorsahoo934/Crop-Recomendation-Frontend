@@ -378,20 +378,15 @@ async function postChatbot(query) {
     throw err;
   }
 }
-// Disease APi Changed
+
 async function uploadDiseaseImage(file) {
   const data = new FormData();
   data.append("file", file);
-
-  const resp = await fetch("https://crop-disease-detection-o7bz.onrender.com/predict-disease", {
+  const resp = await fetch(${API_BASE_URL}/predict-disease, {
     method: "POST",
     body: data,
   });
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => null);
-    throw new Error(`Disease prediction failed: ${resp.status} ${resp.statusText} ${text ?? ''}`);
-  }
+  if (!resp.ok) throw new Error("Disease prediction failed");
   return resp.json();
 }
 
