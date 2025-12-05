@@ -382,11 +382,16 @@ async function postChatbot(query) {
 async function uploadDiseaseImage(file) {
   const data = new FormData();
   data.append("file", file);
-  const resp = await fetch(${API_BASE_URL}/predict-disease, {
+
+  const resp = await fetch(`${API_BASE_URL}/predict-disease`, {
     method: "POST",
     body: data,
   });
-  if (!resp.ok) throw new Error("Disease prediction failed");
+
+  if (!resp.ok) {
+    throw new Error("Disease prediction failed");
+  }
+
   return resp.json();
 }
 
