@@ -382,7 +382,6 @@ async function postChatbot(query) {
 async function uploadDiseaseImage(file) {
   const data = new FormData();
   data.append("file", file);
-
   const resp = await fetch(`${API_BASE_URL}/predict-disease`, {
     method: "POST",
     body: data,
