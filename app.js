@@ -510,7 +510,7 @@ function setupDiseasePage() {
       resultBox.innerHTML = `
         <h3>Disease Detection Result</h3>
         <p><strong>Disease:</strong> ${
-          data.predicted_disease || data.disease || "Unknown"
+          data.predicted_disease || data.disease || "No leaf detected. Upload a clear leaf image."
         }</p>
         ${
           data.confidence
