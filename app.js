@@ -386,14 +386,30 @@ async function uploadDiseaseImage(file) {
     method: "POST",
     body: data,
   });
-
-  if (!resp.ok) {
-    throw new Error("Disease prediction failed");
-  }
-
+  if (!resp.ok) throw new Error("Disease prediction failed");
   return resp.json();
 }
 
+async function requestTreatmentReport(file) {
+  const data = new FormData();
+  data.append("file", file);
+  const resp = await fetch(`${API_BASE_URL}/upload-report`, {
+    method: "POST",
+    body: data,
+  });
+  if (!resp.ok) {
+    const message =
+      (await resp.text().catch(() => null)) ||
+      `Request failed with status ${resp.status}`;
+    throw new Error(message);
+  }
+  const blob = await resp.blob();
+  // Try to get filename from Content-Disposition; fall back to default
+  const disposition = resp.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+  const filename = decodeURIComponent(match?.[1] || match?.[2] || "treatment_report.pdf");
+  return { blob, filename };
+}
 
 // Expose chatbot helper globally so chatbot-widget.js can use it
 window.FarmSathiAPI = {
@@ -474,10 +490,15 @@ function setupDiseasePage() {
   const fileInput = document.getElementById("leafImage");
   const preview = document.getElementById("imagePreview");
   const resultBox = document.getElementById("diseaseResult");
+  const downloadLink = document.getElementById("diseaseReportDownload");
   if (!form || !fileInput || !preview || !resultBox) return;
 
   fileInput.addEventListener("change", () => {
     const file = fileInput.files[0];
+    if (downloadLink) {
+      downloadLink.classList.add("hidden");
+      downloadLink.removeAttribute("href");
+    }
     if (!file) {
       preview.classList.add("hidden");
       return;
@@ -506,11 +527,15 @@ function setupDiseasePage() {
     try {
       resultBox.classList.remove("hidden");
       resultBox.textContent = "Analyzing image...";
+      if (downloadLink) {
+        downloadLink.classList.add("hidden");
+        downloadLink.removeAttribute("href");
+      }
       const data = await uploadDiseaseImage(file);
       resultBox.innerHTML = `
         <h3>Disease Detection Result</h3>
         <p><strong>Disease:</strong> ${
-          data.predicted_disease || data.disease || "No leaf detected. Upload a clear leaf image."
+          data.predicted_disease || data.disease || "Unknown"
         }</p>
         ${
           data.confidence
@@ -525,10 +550,68 @@ function setupDiseasePage() {
             : ""
         }
       `;
+      if (downloadLink && data.report_pdf_url) {
+        const reportUrl = data.report_pdf_url;
+        const absoluteUrl = reportUrl.startsWith("http")
+          ? reportUrl
+          : `${API_BASE_URL}${reportUrl.startsWith("/") ? "" : "/"}${reportUrl}`;
+        downloadLink.href = absoluteUrl;
+        downloadLink.classList.remove("hidden");
+      }
     } catch (err) {
       resultBox.classList.remove("hidden");
       resultBox.textContent = err.message;
       showToast(err.message, "error");
+    }
+  });
+}
+
+function setupTreatmentReportUploader() {
+  const form = document.getElementById("reportForm");
+  const fileInput = document.getElementById("reportFile");
+  const statusBox = document.getElementById("reportStatus");
+  const downloadBtn = document.getElementById("reportDownload");
+  if (!form || !fileInput || !statusBox || !downloadBtn) return;
+
+  const setStatus = (text, isError = false) => {
+    statusBox.classList.remove("hidden");
+    statusBox.textContent = text;
+    statusBox.classList.toggle("error-card", isError);
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = fileInput.files[0];
+    if (!file) {
+      showToast("Please choose a PDF or image file.", "error");
+      return;
+    }
+    if (
+      !file.type.startsWith("image/") &&
+      file.type !== "application/pdf" &&
+      !file.name.toLowerCase().endsWith(".pdf")
+    ) {
+      showToast("Upload a PDF or image file only.", "error");
+      return;
+    }
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    downloadBtn.classList.add("hidden");
+    setStatus("Generating recommendation PDF...");
+
+    try {
+      const { blob, filename } = await requestTreatmentReport(file);
+      const url = URL.createObjectURL(blob);
+      downloadBtn.href = url;
+      downloadBtn.download = filename;
+      downloadBtn.classList.remove("hidden");
+      setStatus("Report ready. Download below.");
+    } catch (err) {
+      setStatus(err.message || "Failed to generate report.", true);
+      showToast(err.message || "Failed to generate report.", "error");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 }
@@ -664,6 +747,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (currentPage === "disease-detect") {
     setupDiseasePage();
+    setupTreatmentReportUploader();
   }
   if (currentPage === "survey") {
     setupSimpleForm("surveyForm", "farmsathi_survey", "Survey submitted.");
