@@ -20,6 +20,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
+// Weatherstack
+const WEATHERSTACK_KEY = "104636a420b707639886b206f2177cd4";
+const WEATHERSTACK_URL = "http://api.weatherstack.com/current";
+let weatherAlertRequested = false;
+let latestWeatherData = null;
+let latestWeatherAlerts = [];
+
 // Utility: current page identifier from body[data-page]
 const currentPage = document.body.dataset.page || "index";
 
@@ -411,6 +418,156 @@ async function requestTreatmentReport(file) {
   return { blob, filename };
 }
 
+// ------- Weather Alerts -------
+
+function renderWeatherBar(content) {
+  let bar = document.getElementById("weatherBar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "weatherBar";
+    bar.className = "weather-bar hidden";
+    const header = document.querySelector(".top-nav");
+    if (header && header.parentElement) {
+      header.insertAdjacentElement("afterend", bar);
+    } else {
+      document.body.prepend(bar);
+    }
+  }
+  bar.innerHTML = `
+    <div class="weather-bar-close-row">
+      <button id="weatherBarClose" class="weather-bar-close" aria-label="Close weather info">&times;</button>
+    </div>
+    ${content}
+  `;
+  bar.classList.remove("hidden");
+
+  const closeBtn = document.getElementById("weatherBarClose");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      bar.classList.add("hidden");
+    });
+  }
+}
+
+function buildWeatherAlerts(current) {
+  const alerts = [];
+  const descriptionText = Array.isArray(current.weather_descriptions)
+    ? current.weather_descriptions.join(" ")
+    : String(current.weather_descriptions || "");
+  const descriptionLower = descriptionText.toLowerCase();
+
+  if (current.humidity > 80) {
+    alerts.push("High risk of fungal disease due to high humidity.");
+  }
+  if (current.temperature > 35) {
+    alerts.push("Heatwave alert. Crop water stress likely.");
+  }
+  if (current.wind_speed > 40) {
+    alerts.push("High wind alert. Possible crop lodging.");
+  }
+  if (current.precip > 5) {
+    alerts.push("Rainfall warning. Waterlogging possible.");
+  }
+  if (
+    descriptionLower.includes("storm") ||
+    descriptionLower.includes("thunder") ||
+    descriptionLower.includes("lightning")
+  ) {
+    alerts.push("Severe storm alert. Take precautions.");
+  }
+
+  if (!alerts.length) {
+    alerts.push("Weather is stable. No immediate risk.");
+  }
+
+  return alerts;
+}
+
+async function fetchWeatherAlerts(lat, lon) {
+  const url = `${WEATHERSTACK_URL}?access_key=${WEATHERSTACK_KEY}&query=${lat},${lon}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error("Weather service unavailable right now.");
+  }
+  const data = await resp.json();
+  if (!data || data.error || data.success === false) {
+    throw new Error(data?.error?.info || "Unable to fetch weather data.");
+  }
+  const current = data.current;
+  if (!current) {
+    throw new Error("No weather data available.");
+  }
+  const alerts = buildWeatherAlerts(current);
+  alerts.forEach((msg) =>
+    showToast(msg, msg.includes("stable") ? "success" : "info")
+  );
+  return {
+    current,
+    location: data.location || {},
+    alerts,
+  };
+}
+
+function requestUserWeatherAlerts() {
+  if (weatherAlertRequested) return;
+  weatherAlertRequested = true;
+
+  if (!navigator.geolocation) {
+    showToast("Geolocation not supported in this browser.", "error");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      try {
+        const { latitude, longitude } = position.coords;
+        const weather = await fetchWeatherAlerts(latitude, longitude);
+        latestWeatherData = weather;
+        latestWeatherAlerts = weather.alerts;
+        const current = weather.current;
+        const loc = weather.location || {};
+        renderWeatherBar(`
+          <div class="weather-bar-header">
+            <div class="weather-location">
+              <strong>${loc.name || "Your location"}</strong>
+              ${loc.region ? `, ${loc.region}` : ""} ${loc.country ? `, ${loc.country}` : ""}
+            </div>
+            <div class="weather-desc">
+              ${(current.weather_descriptions || []).join(", ")}
+            </div>
+          </div>
+          <div class="weather-bar-stats">
+            <span>Temp: ${current.temperature}°C</span>
+            <span>Humidity: ${current.humidity}%</span>
+            <span>Wind: ${current.wind_speed} km/h</span>
+            <span>Precip: ${current.precip} mm</span>
+          </div>
+          <div class="weather-bar-alert">
+            ${weather.alerts[0] || "Weather is stable. No immediate risk."}
+          </div>
+        `);
+      } catch (err) {
+        showToast(err.message || "Failed to fetch weather alerts.", "error");
+        renderWeatherBar(
+          `<div class="weather-bar-header"><strong>Weather unavailable</strong></div>
+           <div class="weather-bar-alert">${err.message || "Unable to load weather data."}</div>`
+        );
+      }
+    },
+    (error) => {
+      showToast(
+        error?.message || "Unable to get your location for weather alerts.",
+        "error"
+      );
+      renderWeatherBar(
+        `<div class="weather-bar-header"><strong>Weather unavailable</strong></div>
+         <div class="weather-bar-alert">Location permission denied. Cannot show weather.</div>`
+      );
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 600000 }
+  );
+}
+
 // Expose chatbot helper globally so chatbot-widget.js can use it
 window.FarmSathiAPI = {
   postChatbot,
@@ -535,7 +692,7 @@ function setupDiseasePage() {
       resultBox.innerHTML = `
         <h3>Disease Detection Result</h3>
         <p><strong>Disease:</strong> ${
-          data.predicted_disease || data.disease || "No Leaf Detected please Upload The Leaf Image "
+          data.predicted_disease || data.disease || "Unknown"
         }</p>
         ${
           data.confidence
@@ -725,6 +882,7 @@ function setupSimpleForm(formId, storageKey, successMessage) {
 onAuthStateChanged(auth, (user) => {
   updateNavForUser(user);
   if (user) {
+    requestUserWeatherAlerts();
     handlePostLoginRedirect();
   } else {
     handleProtectedRoute(null);
