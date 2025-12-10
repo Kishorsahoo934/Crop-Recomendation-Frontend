@@ -64,9 +64,46 @@
           <button type="submit" class="btn btn-primary">
             Detect Disease
           </button>
+          <a
+            id="diseaseReportDownload"
+            class="btn btn-secondary hidden"
+            download="Disease_Report.pdf"
+          >
+            Download Report PDF
+          </a>
         </form>
 
         <div id="diseaseResult" class="result-card hidden"></div>
+      </section>
+
+      <section class="form-section">
+        <h2>Upload PDF/Image to Get Treatment Report</h2>
+        <p class="muted-text">
+          Upload an existing field report (PDF) or a leaf photo to receive a
+          ready-to-download treatment PDF.
+        </p>
+        <form id="reportForm" class="vertical-form">
+          <div class="form-group">
+            <label for="reportFile">PDF or Image</label>
+            <input
+              id="reportFile"
+              type="file"
+              accept=".pdf,image/*"
+              required
+            />
+          </div>
+          <button type="submit" class="btn btn-secondary">
+            Get Treatment PDF
+          </button>
+        </form>
+        <div id="reportStatus" class="result-card hidden"></div>
+        <a
+          id="reportDownload"
+          class="btn btn-primary hidden"
+          download="treatment_report.pdf"
+        >
+          Download Treatment Report
+        </a>
       </section>
     </main>
 
