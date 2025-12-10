@@ -196,6 +196,17 @@ h3 {
   box-shadow: 0 6px 20px rgba(229, 57, 53, 0.4);
 }
 
+.btn-secondary {
+  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+  color: #fff;
+}
+
+.btn-secondary:hover {
+  background: linear-gradient(135deg, #388e3c 0%, #2e7d32 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.35);
+}
+
 .btn-accent {
   background: linear-gradient(135deg, #ffb300 0%, #ffa000 100%);
   color: #222;
