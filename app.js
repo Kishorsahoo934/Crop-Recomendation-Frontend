@@ -20,9 +20,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
-// Weatherstack
-const WEATHERSTACK_KEY = "104636a420b707639886b206f2177cd4";
-const WEATHERSTACK_URL = "http://api.weatherstack.com/current";
+// OpenWeather API
+const OPENWEATHER_KEY = "c5f4f68e17ebe4b5a95e7eb9ae050a82";
+const OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather";
 let weatherAlertRequested = false;
 let latestWeatherData = null;
 let latestWeatherAlerts = [];
@@ -462,7 +462,8 @@ function buildWeatherAlerts(current) {
   if (current.temperature > 35) {
     alerts.push("Heatwave alert. Crop water stress likely.");
   }
-  if (current.wind_speed > 40) {
+  // OpenWeather wind speed is in m/s, convert to km/h for comparison (40 km/h = ~11.1 m/s)
+  if (current.wind_speed > 11.1) {
     alerts.push("High wind alert. Possible crop lodging.");
   }
   if (current.precip > 5) {
@@ -484,26 +485,38 @@ function buildWeatherAlerts(current) {
 }
 
 async function fetchWeatherAlerts(lat, lon) {
-  const url = `${WEATHERSTACK_URL}?access_key=${WEATHERSTACK_KEY}&query=${lat},${lon}`;
+  const url = `${OPENWEATHER_URL}?lat=${lat}&lon=${lon}&appid=${OPENWEATHER_KEY}&units=metric`;
   const resp = await fetch(url);
   if (!resp.ok) {
     throw new Error("Weather service unavailable right now.");
   }
   const data = await resp.json();
-  if (!data || data.error || data.success === false) {
-    throw new Error(data?.error?.info || "Unable to fetch weather data.");
+  if (!data || data.cod !== 200) {
+    throw new Error(data?.message || "Unable to fetch weather data.");
   }
-  const current = data.current;
-  if (!current) {
-    throw new Error("No weather data available.");
-  }
+  
+  // Map OpenWeather response to expected structure
+  const current = {
+    temperature: Math.round(data.main.temp),
+    humidity: data.main.humidity,
+    wind_speed: data.wind?.speed || 0, // in m/s
+    precip: (data.rain?.["1h"] || data.rain?.["3h"] || 0),
+    weather_descriptions: data.weather?.map(w => w.description) || [data.weather?.[0]?.description || "Clear"]
+  };
+  
+  const location = {
+    name: data.name || "",
+    region: data.state || "",
+    country: data.sys?.country || ""
+  };
+  
   const alerts = buildWeatherAlerts(current);
   alerts.forEach((msg) =>
     showToast(msg, msg.includes("stable") ? "success" : "info")
   );
   return {
     current,
-    location: data.location || {},
+    location,
     alerts,
   };
 }
@@ -526,6 +539,8 @@ function requestUserWeatherAlerts() {
         latestWeatherAlerts = weather.alerts;
         const current = weather.current;
         const loc = weather.location || {};
+        // Convert wind speed from m/s to km/h for display
+        const windSpeedKmh = Math.round(current.wind_speed * 3.6);
         renderWeatherBar(`
           <div class="weather-bar-header">
             <div class="weather-location">
@@ -539,7 +554,7 @@ function requestUserWeatherAlerts() {
           <div class="weather-bar-stats">
             <span>Temp: ${current.temperature}°C</span>
             <span>Humidity: ${current.humidity}%</span>
-            <span>Wind: ${current.wind_speed} km/h</span>
+            <span>Wind: ${windSpeedKmh} km/h</span>
             <span>Precip: ${current.precip} mm</span>
           </div>
           <div class="weather-bar-alert">
